@@ -5,11 +5,15 @@ import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
+import android.graphics.PorterDuff;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
+import android.preference.PreferenceManager;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -18,6 +22,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
+
 import kr.ac.ssu.cse.jahn.textsnapper.R;
 
 public class FloatingService extends Service {
@@ -25,9 +30,16 @@ public class FloatingService extends Service {
     private static final int FOREGROUND_ID = 7816;
     private static final int REQUEST_PENDING = 9048;
 
+    private static boolean isBarActive;
+    private static boolean isEng;
+    private static boolean canDraw;
+    private static boolean canMove;
+
     private WindowManager windowManager;
     private RelativeLayout removeHead, floatingHead;
+    private RelativeLayout floatingBar;
     private ImageView removeImage, floatingImage;
+    private ImageView screenshotImage, cropImage, languageImage;
     private Point windowSize;
 
     @Override
@@ -41,7 +53,7 @@ public class FloatingService extends Service {
          */
         LayoutInflater inflater = (LayoutInflater)getSystemService(LAYOUT_INFLATER_SERVICE);
         windowManager = (WindowManager)getSystemService(WINDOW_SERVICE);
-
+        isBarActive = false;
         /**
          * Remove Head inflate 부분
          * TYPE_PHONE Flag가 deprecated라고 하여 삭제할 생각은 XXXXXX
@@ -51,14 +63,16 @@ public class FloatingService extends Service {
         WindowManager.LayoutParams removeParams = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.TYPE_PHONE,
+                WindowManager.LayoutParams.TYPE_PRIORITY_PHONE,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
                     WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH |
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT);
         removeParams.gravity = Gravity.TOP | Gravity.LEFT;
         // removeHead는 호출 시에만 보여야 하기 때문에 기본 Gone!
-        removeHead.setVisibility(View.GONE);
+        // 하지만 ImageView는 화면에 그려진 후에 width, height가 업데이트 되므로
+        // 최초는 INVISIBLE로 화면에 그려야 width, height 정보를 얻어올 수 있다.
+        removeHead.setVisibility(View.INVISIBLE);
         removeImage = (ImageView)removeHead.findViewById(R.id.removeImage);
         windowManager.addView(removeHead, removeParams);
 
@@ -73,7 +87,7 @@ public class FloatingService extends Service {
         WindowManager.LayoutParams floatingParams = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.TYPE_PHONE,
+                WindowManager.LayoutParams.TYPE_PRIORITY_PHONE,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
                         WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH |
                         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
@@ -102,7 +116,7 @@ public class FloatingService extends Service {
             int marginY;
             int removeImageWidth;
             int removeImageHeight;
-
+            //Handler
             Handler longHandler = new Handler();
             Runnable longRunnable = new Runnable() {
                 @Override
@@ -112,13 +126,12 @@ public class FloatingService extends Service {
                     showFloatingRemove();
                 }
             };
-
             /**
              * Floating Button Touch Event
              */
             @Override
             public boolean onTouch(View v, MotionEvent event) {
-                WindowManager.LayoutParams newFloatingParams = (WindowManager.LayoutParams)floatingHead.getLayoutParams();
+                WindowManager.LayoutParams newFloatingParams = (WindowManager.LayoutParams) floatingHead.getLayoutParams();
 
                 int leftMax = -floatingImage.getWidth() / 2;
                 int rightMax = windowSize.x - floatingImage.getWidth() / 2;
@@ -129,142 +142,154 @@ public class FloatingService extends Service {
                  * RawX, Y를 받아올 것!
                  * getX, getY를 그냥 받아오면 상대좌표라 계속 흔들림
                  */
-                int currentX = (int)event.getRawX();
-                int currentY = (int)event.getRawY();
+                int currentX = (int) event.getRawX();
+                int currentY = (int) event.getRawY();
 
                 // 이동되는 좌표
                 int afterX;
                 int afterY;
+                // Bar가 떠있거나 고정했을 경우는 움직이지 않는다.
+                if (isBarActive == false) {
+                    switch (event.getAction()) {
+                        // 롱클릭
+                        case MotionEvent.ACTION_DOWN:
+                            removeImageWidth = removeImage.getLayoutParams().width;
+                            removeImageHeight = removeImage.getLayoutParams().height;
+                            startTime = System.currentTimeMillis();
+                            // 삭제하는 이미지가 얼마나 오랫동안 누르고 있어야 등장할 지 결정
+                            longHandler.postDelayed(longRunnable, 500);
 
-                switch(event.getAction()) {
-                    // 롱클릭
-                    case MotionEvent.ACTION_DOWN:
-                        removeImageWidth = removeImage.getLayoutParams().width;
-                        removeImageHeight = removeImage.getLayoutParams().height;
-                        startTime = System.currentTimeMillis();
-                        // 삭제하는 이미지가 얼마나 오랫동안 누르고 있어야 등장할 지 결정
-                        longHandler.postDelayed(longRunnable, 500);
-                        //longHandler.post(longRunnable);
+                            /**
+                             * Floating Button을 움직일 때 기준이 되는 위치
+                             */
+                            initX = currentX;
+                            initY = currentY;
 
-                        /**
-                         * Floating Button을 움직일 때 기준이 되는 위치
-                         */
-                        initX = currentX;
-                        initY = currentY;
+                            marginX = newFloatingParams.x;
+                            marginY = newFloatingParams.y;
 
-                        marginX = newFloatingParams.x;
-                        marginY = newFloatingParams.y;
+                            break;
+                        // 이동
+                        case MotionEvent.ACTION_MOVE:
+                            int dx = currentX - initX;
+                            int dy = currentY - initY;
 
-                        break;
-                    // 이동
-                    case MotionEvent.ACTION_MOVE:
-                        int dx = currentX - initX;
-                        int dy = currentY - initY;
+                            afterX = marginX + dx;
+                            afterY = marginY + dy;
 
-                        afterX = marginX + dx;
-                        afterY = marginY + dy;
+                            if (afterX < leftMax)
+                                afterX = leftMax;
+                            if (afterX > rightMax)
+                                afterX = rightMax;
+                            if (afterY < topMax)
+                                afterY = topMax;
+                            if (afterY > bottomMax)
+                                afterY = bottomMax;
 
-                        //Log.v("DEBUG","after X : " + afterX + " after Y : " + afterY);
-                        //Log.v("DEBUG","leftMax : " + leftMax + " rightMax : " + rightMax
-                        //+ " topMax : " + topMax + " bottomMax : " + bottomMax);
+                            // 단순히 움직일 뿐만 아니라 삭제할 수 있는 롱클릭 이벤트일 경우
+                            if (isLongClick) {
+                                // removeHead의 위치를 수동으로 적어줘야 함. 수정 xxxxx
+                                int removeLeftBound = windowSize.x / 2 - (int) (removeImageWidth * 1.5);
+                                int removeRightBound = windowSize.x / 2 + (int) (removeImageWidth * 1.5);
+                                int removeTopBound = windowSize.y - (int) (removeImageHeight * 1.5);
 
-                        if(afterX < leftMax)
-                            afterX = leftMax;
-                        if(afterX > rightMax)
-                            afterX = rightMax;
-                        if(afterY < topMax)
-                            afterY = topMax;
-                        if(afterY > bottomMax)
-                            afterY = bottomMax;
+                                if ((currentX >= removeLeftBound && currentX <= removeRightBound)
+                                        && currentY >= removeTopBound) {
+                                    isOnRemoveHead = true;
 
-                        //Log.v("DEBUG!", "isLongClick : " + isLongClick);
+                                    int removeX = (int) ((windowSize.x - (removeImageHeight * 1.5)) / 2);
+                                    int removeY = (int) (windowSize.y - ((removeImageWidth * 1.5) + getStatusBarHeight()));
 
-                        // 단순히 움직일 뿐만 아니라 삭제할 수 있는 롱클릭 이벤트일 경우
-                        if (isLongClick) {
-                            // removeHead의 위치를 수동으로 적어줘야 함. 수정 xxxxx
-                            int removeLeftBound = windowSize.x / 2 - (int) (removeImageWidth * 1.5);
-                            int removeRightBound = windowSize.x / 2 + (int) (removeImageWidth * 1.5);
-                            int removeTopBound = windowSize.y - (int) (removeImageHeight * 1.5);
+                                    Log.v("DEBUG!", "RemoveX : " + removeImageHeight + " RemoveY : " + removeImageWidth);
 
-                            if ((currentX >= removeLeftBound && currentX <= removeRightBound)
-                                    && currentY >= removeTopBound) {
-                                isOnRemoveHead = true;
+                                    if (removeImage.getLayoutParams().height == removeImageHeight) {
+                                        removeImage.getLayoutParams().height = (int) (removeImageHeight * 1.5);
+                                        removeImage.getLayoutParams().width = (int) (removeImageWidth * 1.5);
 
-                                int removeX = (int) ((windowSize.x - (removeImageHeight * 1.5)) / 2);
-                                int removeY = (int) (windowSize.y - ((removeImageWidth * 1.5) + getStatusBarHeight()));
+                                        WindowManager.LayoutParams newRemoveParams = (WindowManager.LayoutParams) removeHead.getLayoutParams();
+                                        newRemoveParams.x = removeX;
+                                        newRemoveParams.y = removeY;
 
-                                Log.v("DEBUG!", "RemoveX : " + removeImageHeight + " RemoveY : " + removeImageWidth);
+                                        windowManager.updateViewLayout(removeHead, newRemoveParams);
+                                    }
 
-                                if (removeImage.getLayoutParams().height == removeImageHeight) {
-                                    removeImage.getLayoutParams().height = (int) (removeImageHeight * 1.5);
-                                    removeImage.getLayoutParams().width = (int) (removeImageWidth * 1.5);
+                                    newFloatingParams.x = removeX + (Math.abs(removeHead.getWidth() - floatingHead.getWidth())) / 2;
+                                    newFloatingParams.y = removeY + (Math.abs(removeHead.getHeight() - floatingHead.getHeight())) / 2;
+
+                                    windowManager.updateViewLayout(floatingHead, newFloatingParams);
+                                    break;
+                                } else {
+                                    isOnRemoveHead = false;
+                                    removeImage.getLayoutParams().height = removeImageHeight;
+                                    removeImage.getLayoutParams().width = removeImageWidth;
 
                                     WindowManager.LayoutParams newRemoveParams = (WindowManager.LayoutParams) removeHead.getLayoutParams();
+                                    int removeX = (windowSize.x - removeHead.getWidth()) / 2;
+                                    int removeY = windowSize.y - (removeHead.getHeight() + getStatusBarHeight());
+
                                     newRemoveParams.x = removeX;
                                     newRemoveParams.y = removeY;
 
                                     windowManager.updateViewLayout(removeHead, newRemoveParams);
                                 }
-
-                                newFloatingParams.x = removeX + (Math.abs(removeHead.getWidth() - floatingHead.getWidth())) / 2;
-                                newFloatingParams.y = removeY + (Math.abs(removeHead.getHeight() - floatingHead.getHeight())) / 2;
-
-                                windowManager.updateViewLayout(floatingHead, newFloatingParams);
-                                break;
-                            } else {
-                                isOnRemoveHead = false;
-                                removeImage.getLayoutParams().height = removeImageHeight;
-                                removeImage.getLayoutParams().width = removeImageWidth;
-
-                                WindowManager.LayoutParams newRemoveParams = (WindowManager.LayoutParams) removeHead.getLayoutParams();
-                                int removeX = (windowSize.x - removeHead.getWidth()) / 2;
-                                int removeY = windowSize.y - (removeHead.getHeight() + getStatusBarHeight());
-
-                                newRemoveParams.x = removeX;
-                                newRemoveParams.y = removeY;
-
-                                windowManager.updateViewLayout(removeHead, newRemoveParams);
                             }
-                        }
 
-                        newFloatingParams.x = afterX;
-                        newFloatingParams.y = afterY;
+                            newFloatingParams.x = afterX;
+                            newFloatingParams.y = afterY;
 
-                        windowManager.updateViewLayout(floatingHead, newFloatingParams);
-                        break;
-                    case MotionEvent.ACTION_UP:
-                        isLongClick = false;
-                        removeHead.setVisibility(View.GONE);
-                        removeImage.getLayoutParams().height = removeImageHeight;
-                        removeImage.getLayoutParams().width = removeImageWidth;
-                        longHandler.removeCallbacks(longRunnable);
-
-                        if(isOnRemoveHead) {
-                            stopService(new Intent(FloatingService.this, FloatingService.class));
-                            isOnRemoveHead = false;
+                            windowManager.updateViewLayout(floatingHead, newFloatingParams);
                             break;
-                        }
+                        case MotionEvent.ACTION_UP:
+                            isLongClick = false;
+                            removeHead.setVisibility(View.GONE);
+                            removeImage.getLayoutParams().height = removeImageHeight;
+                            removeImage.getLayoutParams().width = removeImageWidth;
+                            longHandler.removeCallbacks(longRunnable);
 
-                        int diffX = currentX - initX;
-                        int diffY = currentY - initY;
-
-                        if(Math.abs(diffX) < 5 && Math.abs(diffY) < 5) {
-                            endTime = System.currentTimeMillis();
-                            if((endTime - startTime) < 300) {
-                                // click 했을 때 리스트 띄우는 코드
+                            if (isOnRemoveHead) {
+                                stopService(new Intent(FloatingService.this, FloatingService.class));
+                                isOnRemoveHead = false;
+                                break;
                             }
-                        }
 
-                        afterY = marginY + diffY;
+                            int diffX = currentX - initX;
+                            int diffY = currentY - initY;
 
-                        int BarHeight = getStatusBarHeight();
+                            if (Math.abs(diffX) < 5 && Math.abs(diffY) < 5) {
+                                endTime = System.currentTimeMillis();
+                                if ((endTime - startTime) < 500) {
+                                    // click 했을 때 리스트 띄우는 코드
+                                    showFloatingBar();
+                                }
+                            }
 
-                        newFloatingParams.y = afterY;
-                        isOnRemoveHead = false;
+                            afterY = marginY + diffY;
 
-                        break;
+                            int BarHeight = getStatusBarHeight();
+
+                            newFloatingParams.y = afterY;
+                            isOnRemoveHead = false;
+
+                            break;
+                    }
+                    return true;
+                } else {
+                    switch (event.getAction()) {
+                        case MotionEvent.ACTION_DOWN:
+                            removeImageWidth = removeImage.getLayoutParams().width;
+                            removeImageHeight = removeImage.getLayoutParams().height;
+                            startTime = System.currentTimeMillis();
+                            break;
+                        case MotionEvent.ACTION_UP:
+                            endTime = System.currentTimeMillis();
+                            if ((endTime - startTime) < 500) {
+                                // click 했을 때 리스트 띄우는 코드
+                                showFloatingBar();
+                            }
+                            break;
+                    }
+                    return true;
                 }
-                return true;
             }
         });
 
@@ -293,6 +318,99 @@ public class FloatingService extends Service {
         Log.v("DEBUG", "EXECUTED! x : " + removeParams.width + " y : " + removeParams.height);
         windowManager.updateViewLayout(removeHead, removeParams);
     }
+    /**
+     * Click을 진행했을 때
+     * Floating Bar를 보여줌
+     */
+    private void showFloatingBar() {
+        if(floatingBar != null && isBarActive){
+            windowManager.removeView(floatingBar);
+            isBarActive = false;
+        } else {
+            LayoutInflater inflater = (LayoutInflater) getSystemService(LAYOUT_INFLATER_SERVICE);
+            floatingBar = (RelativeLayout) inflater.inflate(R.layout.activity_floatingbar, null);
+
+            screenshotImage = (ImageView) floatingBar.findViewById(R.id.floatingScreentshot);
+            cropImage = (ImageView) floatingBar.findViewById(R.id.floatingCrop);
+            languageImage = (ImageView) floatingBar.findViewById(R.id.floatingLanguage);
+
+            SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+            String ocrLanguage = pref.getString("ocrSelect", "English");
+            if(ocrLanguage.equals("English")) {
+                languageImage.setImageResource(R.drawable.eng);
+                isEng = true;
+            } else if(ocrLanguage.equals("한국어")) {
+                languageImage.setImageResource(R.drawable.kor);
+                isEng = false;
+            }
+
+            screenshotImage.setOnTouchListener(imageClickEventListener);
+            cropImage.setOnTouchListener(imageClickEventListener);
+            languageImage.setOnTouchListener(imageClickEventListener);
+
+            languageImage.setOnClickListener(new ImageView.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+                    SharedPreferences.Editor editor = pref.edit();
+                    if(isEng) {
+                        /**
+                         * putString 부분 설정 연동 버그를 고쳐야함. 주의할 것.
+                         */
+                        editor.putString("ocrSelect", "한국어");
+                        isEng = false;
+                        languageImage.setImageResource(R.drawable.kor);
+                    } else {
+                        editor.putString("ocrSelect", "English");
+                        isEng = true;
+                        languageImage.setImageResource(R.drawable.eng);
+                    }
+                }
+            });
+
+
+            WindowManager.LayoutParams barParams = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.TYPE_PHONE,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
+                            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH |
+                            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    PixelFormat.TRANSLUCENT);
+            windowManager.addView(floatingBar, barParams);
+            isBarActive = true;
+
+        }
+    }
+
+    /**
+     * 버튼을 눌렀을 때 선택되었음을 보여주도록
+     */
+    ImageView.OnTouchListener imageClickEventListener = new ImageView.OnTouchListener() {
+        @Override
+        public boolean onTouch(View v, MotionEvent event) {
+
+            switch (event.getAction()) {
+                case MotionEvent.ACTION_DOWN: {
+                    ImageView view = (ImageView) v;
+                    // overlay 색상 설정
+                    // 문제점 1. 리소스에 따라서 반응하는 형식이 다름..
+                    view.getDrawable().setColorFilter(Color.GRAY, PorterDuff.Mode.SRC_ATOP);
+                    view.invalidate();
+                    break;
+                }
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL: {
+                    ImageView view = (ImageView) v;
+                    // overlay 색상 제거
+                    view.getDrawable().clearColorFilter();
+                    view.invalidate();
+                    break;
+                }
+            }
+            return false;
+        }
+    };
 
     /**
      * Pending Intent를 이용해서 App이 꺼져도
@@ -345,7 +463,6 @@ public class FloatingService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        Log.d("YYYYY","Service Died!");
         if(floatingHead != null){
             windowManager.removeView(floatingHead);
         }

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/floatingBarLayout"
+    android:layout_width="300dp"
+    android:layout_height="80dp">
+    <LinearLayout
+        android:layout_width="300dp"
+        android:layout_height="80dp"
+        android:orientation="horizontal"
+        android:background="@drawable/drawer"
+        android:gravity="center">
+
+        <ImageView
+            android:id="@+id/floatingScreentshot"
+            android:layout_width="65dp"
+            android:layout_height="65dp"
+            android:src="@drawable/screenshot"
+            android:layout_marginRight="8dp"
+            android:clickable="true"/>
+
+        <ImageView
+            android:id="@+id/floatingCrop"
+            android:layout_width="65dp"
+            android:layout_height="65dp"
+            android:src="@drawable/crop"
+            android:layout_marginRight="8dp"
+            android:clickable="true"/>
+
+        <ImageView
+            android:id="@+id/floatingLanguage"
+            android:layout_width="65dp"
+            android:layout_height="65dp"
+            android:src="@drawable/eng"
+            android:clickable="true"
+            android:layout_marginRight="56dp"/>
+
+
+    </LinearLayout>
+
+
+</RelativeLayout>
