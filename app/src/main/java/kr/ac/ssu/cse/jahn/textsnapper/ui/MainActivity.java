@@ -85,7 +85,8 @@ public class MainActivity extends AppCompatActivity
 
         imageCamera.setOnTouchListener(imageClickEventListener);
         imageGallery.setOnTouchListener(imageClickEventListener);
-        imageWidget.setOnTouchListener(floatingButtonEventListener);
+        imageWidget.setOnTouchListener(imageClickEventListener);
+        imageWidget.setOnClickListener(floatingButtonEventListener);
 
         viewPager = (ViewPager)findViewById(R.id.viewPager);
         viewPager.setAdapter(new PagerAdapter(getSupportFragmentManager()));
@@ -130,35 +131,16 @@ public class MainActivity extends AppCompatActivity
      * Floating Button Overlay!
      * 완성된 코드이므로 더 이상 수정할 필요 없음
      */
-    ImageView.OnTouchListener floatingButtonEventListener = new ImageView.OnTouchListener() {
+    ImageView.OnClickListener floatingButtonEventListener = new ImageView.OnClickListener() {
 
         @Override
-        public boolean onTouch(View v, MotionEvent event) {
-            switch (event.getAction()) {
-                case MotionEvent.ACTION_DOWN: {
-                    ImageView view = (ImageView) v;
-                    // overlay 색상 설정
-                    // 문제점 1. 리소스에 따라서 반응하는 형식이 다름..
-                    view.getDrawable().setColorFilter(Color.GRAY, PorterDuff.Mode.SRC_ATOP);
-                    view.invalidate();
-                    break;
-                }
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL: {
-                    ImageView view = (ImageView) v;
-                    // overlay 색상 제거
-                    view.getDrawable().clearColorFilter();
-                    view.invalidate();
-                    break;
-                }
-            }
+        public void onClick(View v) {
             if(Utils.canDrawOverlays(MainActivity.this)) {
                 startFloatingHead();
             }
             else{
                 requestPermission(PERMISSION_REQUEST_CODE_FLOATING_BUTTON);
             }
-            return false;
         }
     };
 

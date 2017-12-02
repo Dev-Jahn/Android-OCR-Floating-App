@@ -58,7 +58,9 @@ public class FloatingService extends Service {
                 PixelFormat.TRANSLUCENT);
         removeParams.gravity = Gravity.TOP | Gravity.LEFT;
         // removeHead는 호출 시에만 보여야 하기 때문에 기본 Gone!
-        removeHead.setVisibility(View.GONE);
+        // 하지만 ImageView는 화면에 그려진 후에 width, height가 업데이트 되므로
+        // 최초는 INVISIBLE로 화면에 그려야 width, height 정보를 얻어올 수 있다.
+        removeHead.setVisibility(View.INVISIBLE);
         removeImage = (ImageView)removeHead.findViewById(R.id.removeImage);
         windowManager.addView(removeHead, removeParams);
 
@@ -102,7 +104,7 @@ public class FloatingService extends Service {
             int marginY;
             int removeImageWidth;
             int removeImageHeight;
-
+            //Handler
             Handler longHandler = new Handler();
             Runnable longRunnable = new Runnable() {
                 @Override
@@ -164,10 +166,6 @@ public class FloatingService extends Service {
                         afterX = marginX + dx;
                         afterY = marginY + dy;
 
-                        //Log.v("DEBUG","after X : " + afterX + " after Y : " + afterY);
-                        //Log.v("DEBUG","leftMax : " + leftMax + " rightMax : " + rightMax
-                        //+ " topMax : " + topMax + " bottomMax : " + bottomMax);
-
                         if(afterX < leftMax)
                             afterX = leftMax;
                         if(afterX > rightMax)
@@ -176,8 +174,6 @@ public class FloatingService extends Service {
                             afterY = topMax;
                         if(afterY > bottomMax)
                             afterY = bottomMax;
-
-                        //Log.v("DEBUG!", "isLongClick : " + isLongClick);
 
                         // 단순히 움직일 뿐만 아니라 삭제할 수 있는 롱클릭 이벤트일 경우
                         if (isLongClick) {
@@ -345,7 +341,6 @@ public class FloatingService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        Log.d("YYYYY","Service Died!");
         if(floatingHead != null){
             windowManager.removeView(floatingHead);
         }
