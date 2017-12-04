@@ -1,7 +1,23 @@
 [
     {
+        "merged": "C:\\Users\\ajh50\\Desktop\\Android\\Text-Snapper\\tess-two\\build\\intermediates\\res\\merged\\release\\drawable-v21\\abc_btn_colored_material.xml",
+        "source": "C:\\Users\\ajh50\\.android\\build-cache\\70150b057d5697cdb6c6d805064b73932c779a61\\output\\res\\drawable-v21\\abc_btn_colored_material.xml"
+    },
+    {
+        "merged": "C:\\Users\\ajh50\\Desktop\\Android\\Text-Snapper\\tess-two\\build\\intermediates\\res\\merged\\release\\drawable-v21\\abc_action_bar_item_background_material.xml",
+        "source": "C:\\Users\\ajh50\\.android\\build-cache\\70150b057d5697cdb6c6d805064b73932c779a61\\output\\res\\drawable-v21\\abc_action_bar_item_background_material.xml"
+    },
+    {
+        "merged": "C:\\Users\\ajh50\\Desktop\\Android\\Text-Snapper\\tess-two\\build\\intermediates\\res\\merged\\release\\drawable-v21\\abc_edit_text_material.xml",
+        "source": "C:\\Users\\ajh50\\.android\\build-cache\\70150b057d5697cdb6c6d805064b73932c779a61\\output\\res\\drawable-v21\\abc_edit_text_material.xml"
+    },
+    {
         "merged": "C:\\Users\\CypressRH\\Desktop\\Coding\\Android\\TextSnapper\\tess-two\\build\\intermediates\\res\\merged\\release\\drawable-v21\\abc_action_bar_item_background_material.xml",
         "source": "C:\\Users\\CypressRH\\.android\\build-cache\\700d54b018923a858e00ebaa3aa936e626378533\\output\\res\\drawable-v21\\abc_action_bar_item_background_material.xml"
+    },
+    {
+        "merged": "C:\\Users\\ajh50\\Desktop\\Android\\Text-Snapper\\tess-two\\build\\intermediates\\res\\merged\\release\\drawable-v21\\notification_action_background.xml",
+        "source": "C:\\Users\\ajh50\\.android\\build-cache\\70150b057d5697cdb6c6d805064b73932c779a61\\output\\res\\drawable-v21\\notification_action_background.xml"
     },
     {
         "merged": "C:\\Users\\CypressRH\\Desktop\\Coding\\Android\\TextSnapper\\tess-two\\build\\intermediates\\res\\merged\\release\\drawable-v21\\notification_action_background.xml",

@@ -10,11 +10,8 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
-import android.graphics.PixelFormat;
-import android.graphics.Point;
 import android.graphics.PorterDuff;
 import android.hardware.display.DisplayManager;
-import android.media.Image;
 import android.media.ImageReader;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
@@ -30,7 +27,6 @@ import android.support.v4.view.ViewPager;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v7.app.ActionBarDrawerToggle;
 import android.support.v7.app.AppCompatActivity;
-import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
 import android.view.Menu;
@@ -42,7 +38,6 @@ import android.widget.Toast;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
@@ -52,7 +47,6 @@ import kr.ac.ssu.cse.jahn.textsnapper.util.Utils;
 
 import static kr.ac.ssu.cse.jahn.textsnapper.util.Utils.DATA_PATH;
 import static kr.ac.ssu.cse.jahn.textsnapper.util.Utils.copyTessdata;
-import static kr.ac.ssu.cse.jahn.textsnapper.util.Utils.saveScreenShot;
 
 
 public class MainActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener {
@@ -74,6 +68,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     protected MediaProjection mProjection;
     protected ImageReader mImageReader;
     protected Display mDisplay;
+    protected Intent mProjectionIntent;
     protected int mDensity;
     protected int mWidth;
     protected int mHeight;
@@ -166,7 +161,6 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 break;
             case R.id.imageCamera:
                 Log.e(TAG,"Camera Button");
-                saveScreenShot(capture(mImageReader));
                 //fromCamera();
                 break;
             }
@@ -252,10 +246,17 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
         @Override
         public void onClick(View v) {
-            if(Utils.canDrawOverlays(MainActivity.this)) {
-                    startFloatingHead();
-            } else{
-                requestPermission(REQUEST_PERMISSION_OVERLAY);
+            SharedPreferences pref = getPreferences(MODE_PRIVATE);
+            boolean canStart = pref.getBoolean("floatingButtonUse", true);
+            if(canStart) {
+                if (Utils.canDrawOverlays(MainActivity.this)) {
+                    if (FloatingService.isServiceActive() == false)
+                        startFloatingHead();
+                } else {
+                    requestPermission(REQUEST_PERMISSION_OVERLAY);
+                }
+            } else {
+                Toast.makeText(getApplicationContext(), "Floating Button Option이 비활성화되어 있습니다.", Toast.LENGTH_LONG).show();
             }
         }
     };
@@ -340,7 +341,6 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     }
 
     private void startFloatingHead() {
-
         SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
         boolean canUseFloating = pref.getBoolean("floatingButtonUse", true);
         /**
@@ -348,6 +348,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
          */
         if(!FloatingService.isServiceActive() && canUseFloating) {
             Intent intent = new Intent(getApplicationContext(), FloatingService.class);
+            intent.putExtra("projection", mProjectionIntent);
             startService(intent);
         }
         /**
@@ -399,40 +400,6 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         builder.show();
     }
 
-    private void createVirtualDisplay()
-    {
-        Log.e(TAG,"Virtual display created");
-        DisplayMetrics metrics = getResources().getDisplayMetrics();
-        mDensity = metrics.densityDpi;
-        mDisplay = getWindowManager().getDefaultDisplay();
-
-        // get width and height
-        Point size = new Point();
-        mDisplay.getSize(size);
-        mWidth = size.x;
-        mHeight = size.y;
-
-        mImageReader = ImageReader.newInstance(mWidth, mHeight, PixelFormat.RGBA_8888, 2);
-        mProjection.createVirtualDisplay("screen-mirror", mWidth, mHeight, mDensity, VIRTUAL_DISPLAY_FLAGS, mImageReader.getSurface(), null, null);
-    }
-
-    private Bitmap capture(ImageReader reader)
-    {
-        Log.e(TAG, "Capture");
-        Image image = reader.acquireLatestImage();
-        final Image.Plane[] planes = image.getPlanes();
-        final ByteBuffer buffer = planes[0].getBuffer();
-        int offset = 0;
-        int pixelStride = planes[0].getPixelStride();
-        int rowStride = planes[0].getRowStride();
-        int rowPadding = rowStride - pixelStride * mWidth;
-        // create bitmap
-        Bitmap bmp = Bitmap.createBitmap(mWidth+rowPadding/pixelStride, mHeight, Bitmap.Config.ARGB_8888);
-        bmp.copyPixelsFromBuffer(buffer);
-        image.close();
-        return bmp;
-    }
-
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -454,12 +421,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 }
                 break;
             case REQUEST_MEDIA_PROJECTION:
-                mProjection = mProjectionManager.getMediaProjection(resultCode, data);
-                /*if (mProjection != null) {
-                    mProjection.registerCallback(new MediaProjectionCallback(), null);
-                }*/
-                createVirtualDisplay();
-
+                mProjectionIntent = data;
+                data.putExtra("resultcode", resultCode);
                 break;
             case REQUEST_GALLERY:
                 Intent editIntent = new Intent(Intent.ACTION_EDIT);

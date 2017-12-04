@@ -15,7 +15,6 @@ import kr.ac.ssu.cse.jahn.textsnapper.R;
 /**
  * Created by ArchSlave on 2017-11-06.
  */
-
 public class PrefFragment extends PreferenceFragment {
 
     SharedPreferences pref;
@@ -33,16 +32,16 @@ public class PrefFragment extends PreferenceFragment {
                                 + "현재 언어 : " + pref.getString("ocrSelect", "English"));
                     }
 
-                     if(key.equals("floatingButtonUse")) {
-                         boolean canUse = pref.getBoolean("floatingButtonUse", true);
-                         if (canUse == false) {
-                             if (FloatingService.isServiceActive()) {
-                                 // 서비스를 종료시키는 코드가 들어가야 함
-                                 Intent stopIntent = FloatingService.getCurrentFloatingService();
-                                 getActivity().getApplicationContext().stopService(stopIntent);
-                             }
-                         }
-                     }
+                    if(key.equals("floatingButtonUse")) {
+                        boolean canUse = pref.getBoolean("floatingButtonUse", true);
+                        if (canUse == false) {
+                            // 옵션 비활성화했는데 현재 서비스가 켜져있다면 종료
+                            if (FloatingService.isServiceActive()) {
+                                Intent stopIntent = FloatingService.getCurrentFloatingService();
+                                getActivity().getApplicationContext().stopService(stopIntent);
+                            }
+                        }
+                    }
                 }
             };
 
@@ -64,4 +63,3 @@ public class PrefFragment extends PreferenceFragment {
         return view;
     }
 }
-

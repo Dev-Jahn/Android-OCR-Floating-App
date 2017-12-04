@@ -41,10 +41,6 @@ public class OCRService extends Service
     private AsyncTask<Void, Void, ImageLoadAsyncTask.LoadResult> mImageLoadTask;
     private int mAccuracy;
 
-    public OCRService()
-    {
-    }
-
     IOCRService.Stub mBinder = new IOCRService.Stub()
     {
         @Override

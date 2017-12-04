@@ -4,12 +4,21 @@ import android.annotation.TargetApi;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.graphics.PorterDuff;
+import android.hardware.display.DisplayManager;
+import android.media.AudioAttributes;
+import android.media.Image;
+import android.media.ImageReader;
+import android.media.SoundPool;
+import android.media.projection.MediaProjection;
+import android.media.projection.MediaProjectionManager;
 import android.os.Build;
 import android.os.CountDownTimer;
 import android.os.Environment;
@@ -17,7 +26,9 @@ import android.os.FileObserver;
 import android.os.Handler;
 import android.os.IBinder;
 import android.preference.PreferenceManager;
+import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.Display;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
@@ -25,8 +36,12 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
+import android.widget.Toast;
+
+import java.nio.ByteBuffer;
 
 import kr.ac.ssu.cse.jahn.textsnapper.R;
+import kr.ac.ssu.cse.jahn.textsnapper.util.Utils;
 
 import static android.content.ContentValues.TAG;
 
@@ -40,7 +55,18 @@ public class FloatingService extends Service {
     private static boolean canDrawBar;
     private static boolean canMove;
 
-    private static FloatingService thisService;
+    protected MediaProjectionManager mProjectionManager;
+    protected MediaProjection mProjection;
+    protected ImageReader mImageReader;
+    protected Display mDisplay;
+    protected int mDensity;
+    protected int mWidth;
+    protected int mHeight;
+    private static final int VIRTUAL_DISPLAY_FLAGS = DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY | DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC;
+
+    private SoundPool mSoundPool;
+    private int soundID = 0;
+    private boolean soundLoaded = false;
 
     private WindowManager windowManager;
     private RelativeLayout removeHead, floatingHead;
@@ -49,18 +75,21 @@ public class FloatingService extends Service {
     private ImageView screenshotImage, cropImage, languageImage;
     private Point windowSize;
 
+    // 접근 금지!!
+    private static FloatingService thisService;
+
     @Override
     public void onCreate() {
-
+        mProjectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         super.onCreate();
     }
 
     private void handleStart() {
         /**
          * WindowManager로 Floating Head 관리
+         * create virtual display 호출을 위해 onStartCommand 로 이동
          */
-        LayoutInflater inflater = (LayoutInflater)getSystemService(LAYOUT_INFLATER_SERVICE);
-        windowManager = (WindowManager)getSystemService(WINDOW_SERVICE);
+        LayoutInflater inflater = (LayoutInflater) getSystemService(LAYOUT_INFLATER_SERVICE);
 
         thisService = this;
         isBarActive = false;
@@ -79,15 +108,15 @@ public class FloatingService extends Service {
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_PRIORITY_PHONE,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
-                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH |
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                        WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH |
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT);
         removeParams.gravity = Gravity.TOP | Gravity.LEFT;
         // removeHead는 호출 시에만 보여야 하기 때문에 기본 Gone!
         // 하지만 ImageView는 화면에 그려진 후에 width, height가 업데이트 되므로
         // 최초는 INVISIBLE로 화면에 그려야 width, height 정보를 얻어올 수 있다.
         removeHead.setVisibility(View.INVISIBLE);
-        removeImage = (ImageView)removeHead.findViewById(R.id.removeImage);
+        removeImage = (ImageView) removeHead.findViewById(R.id.removeImage);
         windowManager.addView(removeHead, removeParams);
 
         /**
@@ -113,8 +142,8 @@ public class FloatingService extends Service {
          * Floating Button의 초기 위치 설정 코드
          * 이후 사양이 변경되면 이 곳을 수정
          */
-        floatingParams.x = windowSize.x - (int)(floatingImage.getLayoutParams().width * 0.75);
-        floatingParams.y = (int)(windowSize.y * 0.75);
+        floatingParams.x = windowSize.x - (int) (floatingImage.getLayoutParams().width * 0.75);
+        floatingParams.y = (int) (windowSize.y * 0.75);
         windowManager.addView(floatingHead, floatingParams);
 
         floatingHead.setOnTouchListener(new View.OnTouchListener() {
@@ -122,7 +151,6 @@ public class FloatingService extends Service {
             long endTime = 0;
             boolean isLongClick = false;
             boolean isOnRemoveHead = false;
-
             int initX;
             int initY;
             int marginX;
@@ -139,6 +167,7 @@ public class FloatingService extends Service {
                     showFloatingRemove();
                 }
             };
+
             /**
              * Floating Button Touch Event
              */
@@ -188,7 +217,7 @@ public class FloatingService extends Service {
                             int dy = currentY - initY;
 
                             // 만약 floatingBar가 띄워져 있다면 다시 집어넣는다.
-                            if(isBarActive) {
+                            if (isBarActive) {
                                 showFloatingBar();
                             }
 
@@ -289,9 +318,9 @@ public class FloatingService extends Service {
 
                             newFloatingParams.y = afterY;
                             // 만약 X 이동값이 큰 경우, 벽에 붙인다.
-                            if(Math.abs(diffX) >= 5){
+                            if (Math.abs(diffX) >= 5) {
                                 attachSide(currentX);
-                             }
+                            }
 
                             isOnRemoveHead = false;
 
@@ -654,9 +683,8 @@ public class FloatingService extends Service {
             case R.id.floatingScreentshotLeft:
             case R.id.floatingScreentshotRight:
                 Log.e(TAG, "ss taken");
-                /*Intent intent = new Intent(getApplicationContext(), TestActivity.class);
-                intent.putExtra("screenshot", screenBitmap);
-                startActivity(intent);*/
+                mSoundPool.play(soundID,1,1,0,0,1.0f);
+                Utils.saveScreenShot(capture(mImageReader));
                 break;
             case R.id.floatingCropLeft:
             case R.id.floatingCropRight:
@@ -690,6 +718,7 @@ public class FloatingService extends Service {
 
     /**
      * 스크린샷으로 저장소에 파일이 생성되는 것을 감지하는 FileObserver를 시작
+     * ㅇㄹㄴㅇㄹ
      */
     private void setFileObserver()
     {
@@ -698,25 +727,93 @@ public class FloatingService extends Service {
         FileObserver fileObserver = new FileObserver(path, FileObserver.CREATE) {
             @Override
             public void onEvent(int event, String path) {
-                Log.e(TAG, "event detected");
+                Toast.makeText(FloatingService.this, "스크린샷저장이 감지되었습니다", Toast.LENGTH_SHORT).show();
             }
         };
         Log.e(TAG,"FileObserver started watching");
         fileObserver.startWatching();
     }
 
+    private void createVirtualDisplay()
+    {
+        Log.e(TAG,"Virtual display created");
+        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        mDensity = metrics.densityDpi;
+        mDisplay = windowManager.getDefaultDisplay();
+
+        // get width and height
+        Point size = new Point();
+        mDisplay.getSize(size);
+        mWidth = size.x;
+        mHeight = size.y;
+
+        mImageReader = ImageReader.newInstance(mWidth, mHeight, PixelFormat.RGBA_8888, 2);
+        mProjection.createVirtualDisplay("screen-mirror", mWidth, mHeight, mDensity, VIRTUAL_DISPLAY_FLAGS, mImageReader.getSurface(), null, null);
+    }
+
+    private Bitmap capture(ImageReader reader)
+    {
+        Log.e(TAG, "Capture");
+        Image image = reader.acquireLatestImage();
+        final Image.Plane[] planes = image.getPlanes();
+        final ByteBuffer buffer = planes[0].getBuffer();
+        int offset = 0;
+        int pixelStride = planes[0].getPixelStride();
+        int rowStride = planes[0].getRowStride();
+        int rowPadding = rowStride - pixelStride * mWidth;
+        // create bitmap
+        Bitmap bmp = Bitmap.createBitmap(mWidth+rowPadding/pixelStride, mHeight, Bitmap.Config.ARGB_8888);
+        bmp.copyPixelsFromBuffer(buffer);
+        image.close();
+        return bmp;
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        setFileObserver();
+        /**
+         * startId == Service.START_STICKEY일 경우가 올바른 호출
+         * 올바른 호출내에서 PendingIntent를 이용하여
+         * Notification을 만들고, 서비스를 시작하며,
+         * 서비스 관련 처리를 하여야 서비스가 종료되었을 때
+         * 관리할 수 있다.
+         */
         if (startId == Service.START_STICKY) {
+            windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
             PendingIntent pendingIntent = createPendingIntent();
             Notification notification = createNotification(pendingIntent);
             // Notification 시작
             startForeground(FOREGROUND_ID, notification);
+
+
+            setFileObserver();
+            final Intent pIntent = intent.getParcelableExtra("projection");
+            final int resultCode = pIntent.getIntExtra("resultcode",0);
+            mProjection = mProjectionManager.getMediaProjection(resultCode, pIntent);
+            createVirtualDisplay();
+            AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build();
+            mSoundPool = new SoundPool.Builder().setAudioAttributes(audioAttributes).setMaxStreams(8).build();
+            mSoundPool.setOnLoadCompleteListener(new SoundPool.OnLoadCompleteListener() {
+                @Override
+                public void onLoadComplete(SoundPool soundPool, int sampleId, int status) {
+                    soundLoaded = true;
+                }
+            });
+            new Thread(new Runnable()
+            {
+                @Override
+                public void run()
+                {
+                    soundID = mSoundPool.load(getBaseContext(),R.raw.shutter,1);
+                }
+            }).start();
+
             handleStart();
             return super.onStartCommand(intent, flags, startId);
         } else {
-            return Service.START_NOT_STICKY;
+                return Service.START_NOT_STICKY;
         }
     }
 
@@ -729,8 +826,10 @@ public class FloatingService extends Service {
     }
 
 
+
     /**
      * 생명주기 Destory 당시 붙였던 view들을 제거
+     * + 리소스 해제작업
      */
     @Override
     public void onDestroy() {
@@ -739,10 +838,19 @@ public class FloatingService extends Service {
         if(floatingHead != null){
             windowManager.removeView(floatingHead);
         }
-
         if(removeHead != null){
             windowManager.removeView(removeHead);
         }
+        if(thisService != null) {
+            thisService = null;
+        }
+        /**
+         * SoundPool 할당 해제
+         */
+        mSoundPool.release();
+        mSoundPool = null;
+        soundID = 0;
+
     }
 
     public static boolean isServiceActive() {
@@ -758,4 +866,5 @@ public class FloatingService extends Service {
     protected static Intent getCurrentFloatingService() {
         return new Intent(thisService, FloatingService.class);
     }
+
 }
